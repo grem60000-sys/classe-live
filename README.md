@@ -7,4 +7,6 @@ Outil de visioconférence pour les cours à distance : son, caméra, partage d'o
 
 Fonctionnement : WebRTC (son et vidéo de navigateur à navigateur, en étoile autour de l'enseignant) et Supabase Realtime pour la mise en relation. Conseillé jusqu'à 10-15 élèves.
 
+Invitation : QR code, fiche PDF à télécharger ou à partager, message prêt à copier.
+
 Démo sur un seul ordinateur : ajouter `?local=1` à l'adresse et ouvrir plusieurs onglets.
