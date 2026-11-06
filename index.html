@@ -371,6 +371,7 @@ h1,h2,h3{margin:0 0 8px;line-height:1.2}
   <footer class="toolbar" id="toolbar"></footer>
   <audio id="aHost" autoplay></audio>
   <audio id="aMix" autoplay></audio>
+  <div id="audioSink" style="display:none"></div>
 </section>
 
 <div id="modal" class="modal hidden"><div class="mbox" id="mbox"></div></div>
@@ -448,6 +449,24 @@ function beep(f = 880, d = 0.12, v = 0.06) {
     o.start(); g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + d); o.stop(c.currentTime + d + 0.03);
   } catch { }
 }
+// Lecture du son : si Chrome bloque la lecture automatique, on propose un bouton et on réessaie au moindre clic
+let soundBlocked = false;
+function playAudio(el) {
+  const p = el.play();
+  if (p && p.catch) p.catch(() => soundBlocked || askSoundUnlock());
+}
+function askSoundUnlock() {
+  soundBlocked = true;
+  toast('🔇 Le navigateur a bloqué le son. Cliquez pour l\'activer.', { kind: 'warn', ms: 15000, action: { label: '🔊 Activer le son', fn: unlockSound } });
+}
+function unlockSound() {
+  soundBlocked = false;
+  audioCtx();
+  for (const a of $$('audio')) if (a.srcObject && a.paused) a.play().catch(() => askSoundUnlock());
+  $('#unmuteBtn')?.remove();
+}
+document.addEventListener('click', () => { if (AC && AC.state === 'suspended') AC.resume().catch(() => { }); for (const a of $$('audio')) if (a.srcObject && a.paused) a.play().catch(() => { }); }, true);
+setInterval(() => { for (const a of $$('audio')) if (a.srcObject && a.paused && !soundBlocked) a.play().catch(() => askSoundUnlock()); }, 3000);
 function levelOf(an, buf) {
   an.getByteTimeDomainData(buf); let sum = 0;
   for (let i = 0; i < buf.length; i++) { const d = (buf[i] - 128) / 128; sum += d * d; }
@@ -1074,7 +1093,7 @@ function removeStudent(st) {
 
 function cleanupPeer(st) {
   try { st.pc && st.pc.close(); } catch { }
-  try { st.audioEl && (st.audioEl.pause(), st.audioEl.srcObject = null); } catch { }
+  try { st.audioEl && (st.audioEl.pause(), st.audioEl.srcObject = null, st.audioEl.remove()); } catch { }
   try { st.gate && st.gate.disconnect(); } catch { }
   try { st.src && st.src.disconnect(); } catch { }
   for (const o of H.students.values()) if (o !== st && o.gate && st.dest) try { o.gate.disconnect(st.dest); } catch { }
@@ -1134,7 +1153,11 @@ function tuneAll() { for (const st of H.students.values()) tuneStudent(st); }
 function onStudentAudio(st, track) {
   const ctx = audioCtx();
   st.micRemote = track;
-  st.audioEl = new Audio(); st.audioEl.srcObject = new MediaStream([track]); st.audioEl.play().catch(() => { });
+  if (st.audioEl) try { st.audioEl.remove(); } catch { }
+  st.audioEl = document.createElement('audio'); st.audioEl.autoplay = true; st.audioEl.playsInline = true;
+  $('#audioSink').appendChild(st.audioEl);
+  st.audioEl.srcObject = new MediaStream([track]);
+  playAudio(st.audioEl);
   try { st.gate && st.gate.disconnect(); st.src && st.src.disconnect(); } catch { }
   st.src = ctx.createMediaStreamSource(new MediaStream([track]));
   st.gate = ctx.createGain(); st.gate.gain.value = 0;
@@ -1162,7 +1185,7 @@ function hostLevels() {
   let best = null, bl = 0;
   for (const st of H.students.values()) {
     if (!st.analyser || st.status !== 'in') continue;
-    const l = st.mic ? levelOf(st.analyser, st.buf) : 0; st.level = l;
+    const l = levelOf(st.analyser, st.buf); st.level = l;
     if (st.tile) st.tile.classList.toggle('speaking', l > 0.025);
     if (l > bl) { bl = l; best = st; }
   }
@@ -1670,7 +1693,7 @@ function showUnmute() {
   const b = document.createElement('button'); b.id = 'unmuteBtn'; b.className = 'btn primary';
   b.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:25;font-size:18px;padding:14px 22px';
   b.textContent = '🔊 Cliquer pour activer le son';
-  b.onclick = () => { for (const a of [$('#aHost'), $('#aMix')]) a.play().catch(() => { }); audioCtx(); b.remove(); };
+  b.onclick = unlockSound;
   $('#stage').appendChild(b);
 }
 function setBanner(html, kind = '') {
